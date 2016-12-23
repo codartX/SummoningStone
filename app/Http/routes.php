@@ -25,8 +25,6 @@ Route::group(['middleware' => 'web'], function () {
     });
 
     Route::get('/home', 'HomeController@index');
-    Route::get('/activities/page', 'ActivitiesPageController@page');
-    Route::get('/activities/next', 'ActivitiesPageController@next');
 });
 
 Route::post('oauth/access_token', function() {
@@ -36,7 +34,29 @@ Route::post('oauth/access_token', function() {
 $api = app('Dingo\Api\Routing\Router');
 
 $api->version('v1', ['namespace' => 'App\Http\Controllers\Api'], function ($api) {
-    $api->group(['middleware' => 'oauth:test'],function($api){
-        $api->get('test','TestController@index');
+    $api->get('activities_list', 'PublicController@getActivitiesList');
+
+    $api->group(['middleware' => 'oauth:activity_control'],function($api){
+        $api->get('activity/{activity_id}','ActivityController@getActivity');
+        $api->post('activity','ActivityController@createActivity');
+        $api->delete('activity/{activity_id}','ActivityController@deleteActivity');
+        $api->post('activity/{activity_id}','ActivityController@updateActivity');
+        $api->post('activity/{activity_id}/apply','ActivityController@applyActivity');
+        $api->post('activity/{activity_id}/quit','ActivityController@quitActivity');
+        $api->post('activity/{activity_id}/join/{user_id}','ActivityController@joinActivity');
+    });
+
+    $api->group(['middleware' => 'oauth:comment_control'],function($api){
+        $api->get('activity/{activity_id}/comments', 'CommentController@getComments');
+        $api->post('activity/{activity_id}/comments', 'CommentController@createComment');
+        $api->post('activity/{activity_id}/comments/{comment_id}', 'CommentController@updateComment');
+        $api->delete('activity/{activity_id}/comments/{comment_id}','CommentController@deleteComment');
+    });
+
+    $api->group(['middleware' => 'oauth:message_control'],function($api){
+        $api->get('messages', 'MessageController@getMessages');
+        $api->post('messages', 'MessageController@createMessage');
+        $api->post('messages/{message_id}', 'MessageController@openMessage');
+        $api->delete('messages/{message_id}','MessageController@deleteMessage');
     });
 });

@@ -19,6 +19,7 @@ class Activity extends Model
         'start_time',
         'end_time',
         'location',
+        'owner_id',
     ];
 
     protected $postgisFields = [

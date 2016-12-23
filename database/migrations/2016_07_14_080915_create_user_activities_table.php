@@ -28,7 +28,6 @@ class CreateUserActivitiesTable extends Migration
             /*
              *  0 - join request send
              *  1 - joined
-             *  2 - join refused
              */
             $table->integer('status');
 

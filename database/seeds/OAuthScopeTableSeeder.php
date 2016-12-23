@@ -25,6 +25,11 @@ class OAuthScopeTableSeeder extends Seeder
             'description' => 'Get, Add, Update and Delete Tag Scope'
         ]);
 
+        DB::table('oauth_scopes')->insert([
+            'id'          => 'comment_control',
+            'description' => 'Get, Add, Update and Delete Comment Scope'
+        ]);
+
     }
 
 }

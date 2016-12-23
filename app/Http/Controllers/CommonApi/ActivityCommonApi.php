@@ -5,6 +5,10 @@ namespace App\Http\Controllers\CommonApi;
 use Phaza\LaravelPostgis\Geometries\Point;
 use App\Http\Controllers\ReturnCode;
 use App\Activity;
+use App\User;
+use App\Tag;
+use App\ActivityTag;
+use App\UserActivity;
 
 class ActivityCommonApi
 {
@@ -17,135 +21,127 @@ class ActivityCommonApi
         return array(ReturnCode::RET_SUCCESS, $activity);
     }
     
-    public static function getActivities($group_name = NULL, $start = 0, $limit = 10, $search = '',
-                                         $sort_col = 'dev_eui', $sort_dir = 'asc')
+    public static function getActivities($start = 0, $limit = 10, $search = '',
+                                         $sort_col = 'recruit_deadline', $sort_dir = 'desc',
+                                         $user_id = NULL, $lat = NULL, $lng = NULL, $radius = 5000)
     {
-        $q = Node::orderBy($sort_col, $sort_dir)
+        $q = Activity::orderBy($sort_col, $sort_dir)
                    ->skip($start)->take($limit);
 
-        if ($group_name) {
-            $q = $q->where('group_name', $group_name);
-        }
-
         if ($search) {
-            $q = $q->where(function ($query) use ($search) {
-                               $query->where('dev_eui', 'like', '%'.$search.'%')
-                                     ->orWhere('dev_addr', 'like', '%'.$search.'%')
-                                     ->orWhere('description', 'like', '%'.$search.'%')
-                                     ->orWhere('route_profile_name', 'like', '%'.$search.'%')
-                                     ->orWhere('node_profile_name', 'like', '%'.$search.'%');
-                           });
+            $items = explode(' ', $search);
+            foreach ($items as $key => $value) {
+                $q = $q->where(function ($query) use ($value) {
+                                   $query->where('title', 'like', '%'.$value.'%')
+                                         ->orWhere('detail', 'like', '%'.$value.'%');
+                               });
+            }
         }
 
-        $nodes = $q->get();
+        if ($user_id != NULL) {
+            $tags = UserTag::where(['user_id' => $user_id])->get();
+            $q = $q->whereHas('tags', function ($query) use ($tags) {
+                               $query->whereIn('name', $tags);
+                               });
+        }
 
-        return array(ReturnCode::RET_SUCCESS, $nodes);
+        if ($lat != NULL and $lng != NULL and $radius != NULL) {
+            $q = $q->whereRaw('ST_DWithin(location, ST_SetSRID(ST_MakePoint(?, ?), 4326), ?)', [$lng, $lat, $radius]);
+        }
+
+        $activities = $q->get();
+
+        return array(ReturnCode::RET_SUCCESS, $activities);
     }
 
-    public static function addActivity($dev_eui, $group_name, $node_profile_name = NULL, $route_profile_name = NULL, $description = NULL,
-                                       $app_key = NULL, $dev_addr = NULL, $network_session_key = NULL, $lat = NULL, $lng = NULL) 
+    public static function addActivity($title, $detail, $headcount, $recruit_deadline, 
+                                       $start_time, $end_time, $lat, $lng, $owner_id) 
     {
-        $node = Node::where('dev_eui', $dev_eui)->first();
-        if ($node) {
-            return ReturnCode::RET_NODE_EXIST;
-        }
-        $attrs['dev_eui'] = $dev_eui;
-
-        $attrs['group_name'] = $group_name;
-
-        if ($node_profile_name) {
-            $node_profile = NodeProfile::where('name', $node_profile_name)->first();
-            if (!$node_profile) {
-                return ReturnCode::RET_NODE_PROFILE_NOT_EXIST;
-            }
-            $attrs['node_profile_name'] = $node_profile_name;
-        }
-
-        if ($route_profile_name) {
-            $route_profile = RouteProfile::where('name', $route_profile_name)->first();
-            if (!$route_profile) {
-                return ReturnCode::RET_ROUTE_PROFILE_NOT_EXIST;
-            }
-            $attrs['route_profile_name'] = $route_profile_name;
-        }
-
-        if ($description) {
-            $attrs['description'] = $description;
-        }
-
-        if ($app_key) {
-            $attrs['app_key'] = $app_key;
-        }
-
-        if ($dev_addr) {
-            $attrs['dev_addr'] = $dev_addr;
-        }
-
-        if ($network_session_key) {
-            $attrs['network_session_key'] = $network_session_key;
-        }
+        $attrs['title'] = $title;
+        $attrs['detail'] = $detail;
+        $attrs['headcount'] = $headcount;
+        $attrs['member_count'] = 0;
+        $attrs['recruit_deadline'] = date("Y-m-d H:i:s", $recruit_deadline);
+        $attrs['start_time'] = date("Y-m-d H:i:s", $start_time);
+        $attrs['end_time'] = date("Y-m-d H:i:s", $end_time);
+        $attrs['owner_id'] = $owner_id;
 
         if ($lat != NULL and $lng != NULL) {
+            $attrs['lat'] = floatval($lat);
+            $attrs['lng'] = floatval($lng);
             $attrs['location'] = new Point(floatval($lat), floatval($lng));
         }
  
-        $retval = Node::create($attrs);
-        if ($retval) {
+        $activity = Activity::create($attrs);
+        if ($activity) {
+            $sh = scws_open();
+            scws_set_charset($sh, 'utf8');
+            scws_set_dict($sh, 'TagDict.xdb');
+            $title .= ' ';
+            scws_send_text($sh, $title.$detail);
+            $top = scws_get_tops($sh, 5);
+            foreach ($top as $value) {
+                $tag = Tag::firstOrCreate($value); 
+                if ($tag) {
+                    ActivityTag::firstOrCreate(['activity_id' => $activity->id, 'tag_id' => $tag->id]);
+                }
+            }
             return ReturnCode::RET_SUCCESS;
         } else {
             return ReturnCode::RET_DATABASE_FAIL;
         }
     }
 
-    public static function updateActivity($dev_eui, $group_name, $node_profile_name = NULL, $route_profile_name = NULL, $description = NULL,
-                                          $app_key = NULL, $dev_addr = NULl, $network_session_key = NULL, $lat = NULL, $lng = NULL) 
+    public static function updateActivity($id, $title, $detail, $headcount, $member_count, $recruit_deadline, 
+                                          $start_time, $end_time, $lat, $lng, $owner_id) 
     {
-        $node = Node::where(['dev_eui' => $dev_eui, 'group_name' => $group_name])->first();
-        if (!$node) {
-            return ReturnCode::RET_NODE_NOT_EXIST;
-        }
-
         $attrs = array();
-
-        if ($node_profile_name) {
-            $node_profile = NodeProfile::where('name', $node_profile_name)->first();
-            if (!$node_profile) {
-                return ReturnCode::RET_NODE_PROFILE_NOT_EXIST;
-            }
-            $attrs['node_profile_name'] = $node_profile_name;
+        if ($title) {
+            $attrs['title'] = $title;
         }
-
-        if ($route_profile_name) {
-            $route_profile = RouteProfile::where('name', $route_profile_name)->first();
-            if (!$route_profile) {
-                return ReturnCode::RET_ROUTE_PROFILE_NOT_EXIST;
-            }
-            $attrs['route_profile_name'] = $route_profile_name;
+        if ($detail) {
+            $attrs['detail'] = $detail;
         }
-
-        if ($description) {
-            $attrs['description'] = $description;
+        if ($headcount) {
+            $attrs['headcount'] = $headcount;
         }
-
-        if ($app_key) {
-            $attrs['app_key'] = $app_key;
+        if ($member_count) {
+            $attrs['member_count'] = $member_count;
         }
-
-        if ($dev_addr) {
-            $attrs['dev_addr'] = $dev_addr;
+        if ($recruit_deadline) {
+            $attrs['recruit_deadline'] = $recruit_deadline;
         }
-
-        if ($network_session_key) {
-            $attrs['network_session_key'] = $network_session_key;
+        if ($start_time) {
+            $attrs['start_time'] = $start_time;
         }
-
+        if ($end_time) {
+            $attrs['end_time'] = $end_time;
+        }
         if ($lat != NULL and $lng != NULL) {
+            $attrs['lat'] = floatval($lat);
+            $attrs['lng'] = floatval($lng);
             $attrs['location'] = new Point(floatval($lat), floatval($lng));
         }
- 
+
         if ($attrs) {
-            $retval = Node::where(['dev_eui' => $dev_eui, 'group_name' => $group_name])->update($attrs); 
-            if ($retval) {
+            $activity = Activity::where(['id' => $id, 'owner_id' => $owner_id])->update($attrs); 
+            if ($activity) {
+                if ($title or $detail) {
+                    $sh = scws_open();
+                    scws_set_charset($sh, 'utf8');
+                    scws_set_dict($sh, 'TagDict.xdb');
+                    $title = $activity->title.' ';
+                    scws_send_text($sh, $title.$activity->detail);
+                    $top = scws_get_tops($sh, 5);
+                    ActivityTag::where(['activity_id' => $activity->id])->delete(); 
+                    foreach ($top as $value) {
+                        $tag = Tag::firstOrCreate($value);
+                        if ($tag) {
+                            ActivityTag::firstOrCreate(['activity_id' => $activity->id, 'tag_id' => $tag->id]);
+                        }
+                    }
+
+                }
                 return ReturnCode::RET_SUCCESS;
             } else {
                 return ReturnCode::RET_DATABASE_FAIL;
@@ -156,11 +152,6 @@ class ActivityCommonApi
 
     public static function deleteActivity($id, $owner_id)
     {
-        $activity = Activity::where(['id' => $id, 'owner_id' => $owner_id])->first();
-        if (!$activity) {
-            return ReturnCode::RET_NODE_NOT_EXIST;
-        }
-
         $retval = Activity::where(['id' => $id, 'owner_id' => $owner_id])->delete();
         if ($retval) {
             return ReturnCode::RET_SUCCESS;
@@ -168,5 +159,4 @@ class ActivityCommonApi
             return ReturnCode::RET_DATABASE_FAIL;
         }
     }
-
 }

@@ -1,6 +1,6 @@
 <?php
 
-use Illuminate\Database\Schema\Blueprint;
+use Phaza\LaravelPostgis\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
 
 class CreateUsersTable extends Migration
@@ -25,6 +25,12 @@ class CreateUsersTable extends Migration
                   ->onDelete('set null');
 
             $table->integer('score');
+
+            $table->float('lat')->nullable();
+            $table->float('lng')->nullable();
+            $table->point('location')->nullable();
+
+            $table->string('weixin_id')->nullable();
 
             $table->rememberToken();
             $table->timestamps();

@@ -21,7 +21,10 @@ class CreateActivitiesTable extends Migration
             $table->timestamp('recruit_deadline');
             $table->timestamp('start_time');
             $table->timestamp('end_time');
+            $table->float('lat')->nullable();
+            $table->float('lng')->nullable();
             $table->point('location')->nullable();
+            $table->string('weixin_group_id')->nullable();
 
             $table->integer('owner_id');
             $table->foreign('owner_id')

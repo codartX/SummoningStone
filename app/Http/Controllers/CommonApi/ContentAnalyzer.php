@@ -4,26 +4,24 @@ namespace App\Http\Controllers\CommonApi;
 
 class ContentAnalyzer
 {
-    public static function getActivityDetail($title = '', $detail = '')
+    public static function getTags($content = '')
     {
-        $content = $titile . $detail;
+        $result = array(); 
+
+        $sh = scws_open();
+        scws_set_charset($sh, 'utf8');
+        scws_set_dict($sh, 'TagDict.xdb');
+
         $result = array();
 
-        $so = scws_new();
-        $so->set_dict();
-        
-
         if ($content) {
-            $so->send_text($title);
-            while ($tmp = $so->get_result()) {
-                print_r($tmp);
-                $result[] = $tmp;
+            scws_send_text($sh, $content);
+            $top = scws_get_tops($sh, 5);
+            foreach ($top as $value) {
+                $result[] = $value['word'];
             }
         } 
-   
-        $so->close();
 
         return $result;
-
     } 
 }

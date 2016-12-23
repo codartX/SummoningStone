@@ -25,7 +25,7 @@ class CreateUserTagsTable extends Migration
                   ->references('id')->on('tags')
                   ->onDelete('cascade')->onUpdate('cascade');
 
-            $table->integer('priority');
+            $table->integer('weight');
 
             $table->timestamps();
         });
